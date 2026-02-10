@@ -7,6 +7,7 @@ import {
   processModelData,
   extractBaseURL,
   isUserProvided,
+  isEnabled,
   resolveHeaders,
   deriveBaseURL,
   logAxiosError,
@@ -218,9 +219,19 @@ export async function fetchOpenAIModels(
     baseURL = extractBaseURL(reverseProxyUrl) ?? openaiBaseURL;
   }
 
-  const modelsCache = standardCache(CacheKeys.MODEL_QUERIES);
+  // In CIX mode, model availability is policy-driven (per-tenant) and can change frequently,
+  // so cache only briefly to avoid stale UI while still limiting upstream calls.
+  const modelsCache = standardCache(
+    CacheKeys.MODEL_QUERIES,
+    isEnabled(process.env.CIX_LLM_GATEWAY_OIDC) ? 30_000 : undefined,
+  );
 
-  const cachedModels = await modelsCache.get(baseURL);
+  const cacheKey =
+    isEnabled(process.env.CIX_LLM_GATEWAY_OIDC) && opts.user
+      ? `${baseURL}|user:${opts.user}`
+      : baseURL;
+
+  const cachedModels = await modelsCache.get(cacheKey);
   if (cachedModels) {
     return cachedModels as string[];
   }
@@ -248,7 +259,7 @@ export async function fetchOpenAIModels(
     models = otherModels.concat(instructModels);
   }
 
-  await modelsCache.set(baseURL, models);
+  await modelsCache.set(cacheKey, models);
   return models;
 }
 

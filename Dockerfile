@@ -31,7 +31,7 @@ COPY --chown=node:node packages/api/package.json ./packages/api/package.json
 
 RUN \
     # Allow mounting of these files, which have no default
-    touch .env ; \
+    touch .env librechat.yaml ; \
     # Create directories for the volumes to inherit the correct permissions
     mkdir -p /app/client/public/images /app/logs /app/uploads ; \
     npm config set fetch-retry-maxtimeout 600000 ; \
@@ -43,9 +43,9 @@ COPY --chown=node:node . .
 
 RUN \
     # React client build with configurable memory
-    NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend; \
-    npm prune --production; \
-    npm cache clean --force
+    NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend \
+    && npm prune --production \
+    && npm cache clean --force
 
 # Node API setup
 EXPOSE 3080

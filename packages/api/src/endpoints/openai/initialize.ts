@@ -5,8 +5,22 @@ import type {
   OpenAIConfigOptions,
   UserKeyValues,
 } from '~/types';
-import { getAzureCredentials, resolveHeaders, isUserProvided, checkUserKeyExpiry } from '~/utils';
+import {
+  getAzureCredentials,
+  resolveHeaders,
+  isUserProvided,
+  checkUserKeyExpiry,
+  isEnabled,
+} from '~/utils';
 import { getOpenAIConfig } from './config';
+
+function getBearerToken(header: unknown): string | undefined {
+  if (!header || typeof header !== 'string') {
+    return undefined;
+  }
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim();
+}
 
 /**
  * Initializes OpenAI options for agent usage. This function always returns configuration
@@ -54,6 +68,13 @@ export async function initializeOpenAI({
   const baseURL = userProvidesURL
     ? userValues?.baseURL
     : baseURLOptions[endpoint as keyof typeof baseURLOptions];
+
+  if (endpoint === EModelEndpoint.openAI && isEnabled(process.env.CIX_LLM_GATEWAY_OIDC)) {
+    const bearerToken = getBearerToken(req?.headers?.authorization ?? req?.headers?.Authorization);
+    if (bearerToken) {
+      apiKey = bearerToken;
+    }
+  }
 
   const clientOptions: OpenAIConfigOptions = {
     proxy: PROXY ?? undefined,
