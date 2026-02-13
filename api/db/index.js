@@ -1,8 +1,7 @@
-const mongoose = require('mongoose');
-const { createModels } = require('@librechat/data-schemas');
 const { connectDb } = require('./connect');
 const indexSync = require('./indexSync');
 
-createModels(mongoose);
+// Ensure DB models are registered (and CIX encryption hooks are installed) before the app starts.
+require('./models');
 
 module.exports = { connectDb, indexSync };

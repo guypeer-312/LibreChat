@@ -1,11 +1,14 @@
 import type * as t from '~/types';
 import mongoMeili from '~/models/plugins/mongoMeili';
 import messageSchema from '~/schema/message';
+import { applyModelPlugins } from './modelPlugins';
 
 /**
  * Creates or returns the Message model using the provided mongoose instance and schema
  */
 export function createMessageModel(mongoose: typeof import('mongoose')) {
+  applyModelPlugins('Message', messageSchema, mongoose);
+
   if (process.env.MEILI_HOST && process.env.MEILI_MASTER_KEY) {
     messageSchema.plugin(mongoMeili, {
       mongoose,

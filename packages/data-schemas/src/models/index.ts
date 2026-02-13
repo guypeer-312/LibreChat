@@ -27,6 +27,7 @@ import { createMemoryModel } from './memory';
 import { createAccessRoleModel } from './accessRole';
 import { createAclEntryModel } from './aclEntry';
 import { createGroupModel } from './group';
+export { registerModelPlugin, type ModelPlugin } from './modelPlugins';
 
 /**
  * Creates all database models for all collections

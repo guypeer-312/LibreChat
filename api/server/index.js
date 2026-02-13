@@ -30,6 +30,7 @@ const configureSocialLogins = require('./socialLogins');
 const { getAppConfig } = require('./services/Config');
 const staticCache = require('./utils/staticCache');
 const noIndex = require('./middleware/noIndex');
+const cixRequestContext = require('./middleware/cixRequestContext');
 const { seedDatabase } = require('~/models');
 const routes = require('./routes');
 
@@ -130,6 +131,10 @@ const startServer = async () => {
   if (isEnabled(ALLOW_SOCIAL_LOGIN)) {
     await configureSocialLogins(app);
   }
+
+  // CIX request context needs access to OpenID session tokens (when OPENID_REUSE_TOKENS is enabled),
+  // so it must run after any express-session middleware installed by `configureSocialLogins`.
+  app.use(cixRequestContext);
 
   app.use('/oauth', routes.oauth);
   /* API Endpoints */
