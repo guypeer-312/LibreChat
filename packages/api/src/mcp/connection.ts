@@ -828,13 +828,39 @@ export class MCPConnection extends EventEmitter {
         errorContext.hint = 'Check Nginx/proxy configuration for SSE endpoints';
       }
 
-      // Extract additional debug info from SseError if available
+      // Extract additional debug info from transport errors if available
       if (error && typeof error === 'object') {
-        const sseError = error as { event?: unknown; stack?: string };
+        const transportError = error as {
+          name?: unknown;
+          cause?: unknown;
+          event?: unknown;
+          stack?: unknown;
+        };
+
+        if (typeof transportError.name === 'string') {
+          errorContext.name = transportError.name;
+        }
+
+        if (transportError.cause) {
+          const cause = transportError.cause as unknown;
+          if (cause && typeof cause === 'object') {
+            const causeObj = cause as { message?: unknown; code?: unknown };
+            if (typeof causeObj.message === 'string') {
+              errorContext.cause = causeObj.message;
+            } else {
+              errorContext.cause = String(cause);
+            }
+            if (typeof causeObj.code === 'string' || typeof causeObj.code === 'number') {
+              errorContext.causeCode = causeObj.code;
+            }
+          } else {
+            errorContext.cause = String(cause);
+          }
+        }
 
         // Include the original eventsource event for debugging
-        if (sseError.event && typeof sseError.event === 'object') {
-          const event = sseError.event as { code?: number; message?: string; type?: string };
+        if (transportError.event && typeof transportError.event === 'object') {
+          const event = transportError.event as { code?: number; message?: string; type?: string };
           errorContext.eventDetails = {
             type: event.type,
             code: event.code,
@@ -843,8 +869,8 @@ export class MCPConnection extends EventEmitter {
         }
 
         // Include stack trace if available
-        if (sseError.stack) {
-          errorContext.stack = sseError.stack;
+        if (typeof transportError.stack === 'string') {
+          errorContext.stack = transportError.stack;
         }
       }
 
@@ -986,6 +1012,19 @@ export class MCPConnection extends EventEmitter {
   }
 
   private isOAuthError(error: unknown): boolean {
+    // Only treat 401/403 as OAuth-related when the server is actually configured for OAuth.
+    // Otherwise, generic auth failures (e.g. our Envoy ext_authz) should fail fast and avoid
+    // triggering the MCP OAuth flow state machine.
+    const opts = this.options as unknown as {
+      oauth?: unknown;
+      requiresOAuth?: unknown;
+      oauthMetadata?: unknown;
+    };
+    const oauthConfigured = Boolean(opts?.oauth) || Boolean(opts?.requiresOAuth) || Boolean(opts?.oauthMetadata);
+    if (!oauthConfigured) {
+      return false;
+    }
+
     if (!error || typeof error !== 'object') {
       return false;
     }
