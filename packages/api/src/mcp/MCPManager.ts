@@ -331,10 +331,157 @@ Please follow these instructions when using tools from the respective MCP server
       this.checkIdleConnections();
       return formatToolContent(result as t.MCPToolCallResponse, provider);
     } catch (error) {
+      const cixOAuthRequired = extractCixMCPOAuthRequired(error);
+      if (cixOAuthRequired?.startPath && oauthStart) {
+        try {
+          await oauthStart(cixOAuthRequired.startPath);
+        } catch (emitErr) {
+          logger.warn(
+            `${logPrefix}[${toolName}] Failed to emit OAuth start URL to client`,
+            emitErr,
+          );
+        }
+      }
+
       // Log with context and re-throw or handle as needed
-      logger.error(`${logPrefix}[${toolName}] Tool call failed`, error);
+      if (cixOAuthRequired) {
+        logger.warn(`${logPrefix}[${toolName}] OAuth required`, {
+          gateway_slug: cixOAuthRequired.gatewaySlug,
+          provider: cixOAuthRequired.provider,
+        });
+      } else {
+        logger.error(`${logPrefix}[${toolName}] Tool call failed`, error);
+      }
       // Rethrowing allows the caller (createMCPTool) to handle the final user message
       throw error;
     }
   }
+}
+
+function extractCixMCPOAuthRequired(
+  error: unknown,
+): { gatewaySlug?: string; provider?: string; startPath: string } | null {
+  const toNumber = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  };
+
+  const findPayload = (
+    value: unknown,
+    depth = 0,
+    seen: Set<object> = new Set(),
+  ): Record<string, unknown> | null => {
+    if (!value || depth > 6) {
+      return null;
+    }
+    if (typeof value !== 'object') {
+      return null;
+    }
+    if (seen.has(value)) {
+      return null;
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const it of value) {
+        const found = findPayload(it, depth + 1, seen);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    const obj = value as Record<string, unknown>;
+    const kind = typeof obj.kind === 'string' ? obj.kind : '';
+    if (kind === 'mcp_oauth_required') {
+      return obj;
+    }
+
+    const cix = obj.cix;
+    if (cix && typeof cix === 'object') {
+      const found = findPayload(cix, depth + 1, seen);
+      if (found) {
+        return found;
+      }
+    }
+
+    for (const v of Object.values(obj)) {
+      const found = findPayload(v, depth + 1, seen);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  };
+
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+  const anyErr = error as {
+    code?: unknown;
+    message?: unknown;
+    data?: unknown;
+    error?: unknown;
+  };
+
+  const codeNum = toNumber(anyErr.code) ?? toNumber((anyErr.error as any)?.code);
+  const messageStr = typeof anyErr.message === 'string' ? anyErr.message : '';
+
+  const payload =
+    findPayload(anyErr.data) ??
+    findPayload((anyErr.error as any)?.data) ??
+    findPayload(anyErr.error) ??
+    findPayload(anyErr);
+
+  const payloadKind = payload && typeof payload.kind === 'string' ? payload.kind : '';
+
+  let startPath =
+    payload && typeof payload.start_path === 'string'
+      ? payload.start_path
+      : payload && typeof payload.startPath === 'string'
+        ? payload.startPath
+        : '';
+
+  const gatewaySlug =
+    payload && typeof payload.gateway_slug === 'string' ? payload.gateway_slug : undefined;
+  const provider = payload && typeof payload.provider === 'string' ? payload.provider : undefined;
+
+  if (!startPath && gatewaySlug) {
+    startPath = `/api/cix/mcp/oauth/start?gateway_slug=${encodeURIComponent(gatewaySlug)}`;
+  }
+
+  if (startPath.startsWith('http://') || startPath.startsWith('https://')) {
+    try {
+      const u = new URL(startPath);
+      startPath = `${u.pathname}${u.search}`;
+    } catch {
+      // leave as-is
+    }
+  }
+
+  const isCixOAuthRequired =
+    codeNum === -32091 ||
+    messageStr === 'oauth_required' ||
+    messageStr.includes('oauth_required') ||
+    payloadKind === 'mcp_oauth_required';
+
+  if (!isCixOAuthRequired) {
+    return null;
+  }
+  if (typeof startPath !== 'string' || !startPath.startsWith('/api/cix/mcp/oauth/start')) {
+    return null;
+  }
+
+  return {
+    gatewaySlug,
+    provider,
+    startPath,
+  };
 }

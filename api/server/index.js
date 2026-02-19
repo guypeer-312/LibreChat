@@ -166,6 +166,7 @@ const startServer = async () => {
 
   app.use('/api/tags', routes.tags);
   app.use('/api/mcp', routes.mcp);
+  app.use('/api/cix/mcp/oauth', routes.cixMcpOauth);
 
   app.use(ErrorController);
 

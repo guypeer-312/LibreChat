@@ -26,9 +26,11 @@ const auth = require('./auth');
 const keys = require('./keys');
 const user = require('./user');
 const mcp = require('./mcp');
+const cixMcpOauth = require('./cixMcpOauth');
 
 module.exports = {
   mcp,
+  cixMcpOauth,
   auth,
   adminAuth,
   keys,

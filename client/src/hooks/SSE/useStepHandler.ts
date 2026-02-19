@@ -192,13 +192,24 @@ export default function useStepHandler({
       const id = getNonEmptyValue([contentPart.tool_call.id, existingToolCall?.id]) ?? '';
       const name = getNonEmptyValue([contentPart.tool_call.name, existingToolCall?.name]) ?? '';
 
+      // Preserve auth details if they were previously streamed via run step delta but omitted
+      // from the final tool_call payload (common for run_step_completed events).
+      const auth =
+        finalUpdate && contentPart.tool_call.auth == null
+          ? existingToolCall?.auth
+          : contentPart.tool_call.auth;
+      const expires_at =
+        finalUpdate && contentPart.tool_call.expires_at == null
+          ? existingToolCall?.expires_at
+          : contentPart.tool_call.expires_at;
+
       const newToolCall: Agents.ToolCall & PartMetadata = {
         id,
         name,
         args,
         type: ToolCallTypes.TOOL_CALL,
-        auth: contentPart.tool_call.auth,
-        expires_at: contentPart.tool_call.expires_at,
+        auth,
+        expires_at,
       };
 
       if (finalUpdate) {

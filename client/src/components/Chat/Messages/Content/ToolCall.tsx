@@ -81,25 +81,59 @@ export default function ToolCall({
     [args, output],
   );
 
-  const authDomain = useMemo(() => {
+  const { authOpenURL, authDomain, isCixMCPOAuthStart } = useMemo(() => {
     const authURL = auth ?? '';
     if (!authURL) {
-      return '';
+      return { authOpenURL: '', authDomain: '', isCixMCPOAuthStart: false };
     }
+
+    const base =
+      typeof window !== 'undefined' && window?.location?.origin
+        ? window.location.origin
+        : 'http://localhost';
+
     try {
-      const url = new URL(authURL);
-      return url.hostname;
+      const url = new URL(authURL, base);
+      const isCix = url.pathname.startsWith('/api/cix/mcp/oauth/start');
+      const gatewaySlug = isCix ? url.searchParams.get('gateway_slug') : null;
+      const domain = gatewaySlug || url.hostname;
+
+      return {
+        authOpenURL: url.toString(),
+        authDomain: domain,
+        isCixMCPOAuthStart: isCix,
+      };
     } catch (e) {
       logger.error(
         'client/src/components/Chat/Messages/Content/ToolCall.tsx - Failed to parse auth URL',
         e,
       );
-      return '';
+      return { authOpenURL: authURL, authDomain: '', isCixMCPOAuthStart: false };
     }
   }, [auth]);
 
   const progress = useProgress(initialProgress);
   const cancelled = (!isSubmitting && progress < 1) || error === true;
+
+  const authAutoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!authOpenURL || authAutoOpenedRef.current) {
+      return;
+    }
+    if (!isCixMCPOAuthStart) {
+      return;
+    }
+
+    authAutoOpenedRef.current = true;
+    try {
+      window.open(authOpenURL, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      logger.debug(
+        'client/src/components/Chat/Messages/Content/ToolCall.tsx - Failed to auto-open auth URL',
+        e,
+      );
+    }
+  }, [authOpenURL, isCixMCPOAuthStart]);
 
   const getFinishedText = () => {
     if (cancelled) {
@@ -223,14 +257,14 @@ export default function ToolCall({
           </div>
         </div>
       </div>
-      {auth != null && auth && progress < 1 && !cancelled && (
+      {authOpenURL != null && authOpenURL && (
         <div className="flex w-full flex-col gap-2.5">
           <div className="mb-1 mt-2">
             <Button
               className="font-mediu inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm"
               variant="default"
               rel="noopener noreferrer"
-              onClick={() => window.open(auth, '_blank', 'noopener,noreferrer')}
+              onClick={() => window.open(authOpenURL, '_blank', 'noopener,noreferrer')}
             >
               {localize('com_ui_sign_in_to_domain', { 0: authDomain })}
             </Button>
